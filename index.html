@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat with Audio</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        background-color: #e5ddd5; /* WhatsApp background */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      .chat-container {
+        background-color: #fff;
+        width: 400px;
+        max-width: 90%;
+        height: 600px;
+        max-height: 90vh;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .chat-header {
+        background-color: #075e54; /* WhatsApp header color */
+        color: #fff;
+        padding: 15px;
+        text-align: center;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        font-weight: bold;
+        font-size: 1.1em;
+      }
+
+      #chat {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .message {
+        padding: 8px 12px;
+        margin-bottom: 10px;
+        border-radius: 7px;
+        clear: both;
+      }
+
+      .message.user {
+        background-color: #dcf8c6; /* User message bubble */
+        align-self: flex-end;
+        float: right;
+      }
+
+      .message.bot {
+        background-color: #fff; /* Bot message bubble */
+        align-self: flex-start;
+        float: left;
+        box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+      }
+
+      .chat-input-area {
+        display: flex;
+        padding: 10px;
+        border-top: 1px solid #ccc;
+        background-color: #f0f0f0;
+      }
+
+      #textInput {
+        flex-grow: 1;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 20px;
+        margin-right: 10px;
+      }
+
+      #recordButton,
+      #stopButton,
+      #sendButton {
+        background-color: #075e54;
+        color: #fff;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 20px;
+        cursor: pointer;
+        margin-left: 5px;
+      }
+      #stopButton {
+        background-color: #d33232; /*red*/
+      }
+
+      #recordButton:disabled,
+      #stopButton:disabled,
+      #sendButton:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      /*clear fix float*/
+      .clear {
+        clear: both;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chat-container">
+      <div class="chat-header">Chat with IA</div>
+      <div id="chat">
+        <div class="clear"></div>
+      </div>
+      <div class="chat-input-area">
+        <input type="text" id="textInput" placeholder="Type a message..." />
+        <button id="recordButton">🎤</button>
+        <button id="stopButton" disabled>⏹️</button>
+        <button id="sendButton">Send</button>
+      </div>
+    </div>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+      let isRecording = false;
+
+      // Get user media (microphone access)
+      async function startRecording() {
+        try {
+          isRecording = true;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+          };
+          mediaRecorder.onstop = sendAudio;
+          mediaRecorder.start();
+          console.log("Recording started...");
+
+          // Enable stop button and disable record button
+          document.getElementById("stopButton").disabled = false;
+          document.getElementById("recordButton").disabled = true;
+          document.getElementById("sendButton").disabled = true;
+        } catch (error) {
+          isRecording = false;
+          console.error("Error accessing microphone:", error);
+          alert("Error accessing microphone. Please allow microphone access.");
+        }
+      }
+
+      // Stop recording
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          isRecording = false;
+          console.log("Recording stopped...");
+
+          // Disable stop button and enable record button
+          document.getElementById("stopButton").disabled = true;
+          document.getElementById("recordButton").disabled = false;
+          document.getElementById("sendButton").disabled = false;
+        }
+      }
+
+      // Send audio to the server
+      async function sendAudio() {
+        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+        const formData = new FormData();
+        formData.append("audio", audioBlob);
+
+        try {
+          console.log("Sending audio to server...");
+          const response = await fetch("/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error("Transcription failed.");
+          }
+
+          const result = await response.json();
+          console.log("Transcription result:", result);
+          addMessage(result.transcription, "bot");
+        } catch (error) {
+          console.error("Error:", error);
+          addMessage("Error transcribing audio.", "bot");
+        } finally {
+          audioChunks = [];
+        }
+      }
+
+      // Send text to the server
+      async function sendText() {
+        const text = document.getElementById("textInput").value;
+        if (!text) return;
+
+        addMessage(text, "user");
+        document.getElementById("textInput").value = "";
+
+        try {
+          console.log("Sending text to server...");
+          const response = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Chat failed.");
+          }
+
+          const result = await response.json();
+          console.log("Chat response:", result);
+          addMessage(result.response, "bot");
+        } catch (error) {
+          console.error("Error:", error);
+          addMessage("Error sending message.", "bot");
+        }
+      }
+
+      // Add a message to the chat
+      function addMessage(text, sender) {
+        const chat = document.getElementById("chat");
+        const message = document.createElement("div");
+        message.className = `message ${sender}`;
+        message.innerText = text;
+        chat.appendChild(message);
+        chat.scrollTop = chat.scrollHeight;
+
+        const clearDiv = document.createElement("div");
+        clearDiv.classList.add("clear");
+        chat.appendChild(clearDiv);
+      }
+
+      // Event listeners
+      document
+        .getElementById("recordButton")
+        .addEventListener("click", startRecording);
+      document
+        .getElementById("stopButton")
+        .addEventListener("click", stopRecording);
+      document.getElementById("sendButton").addEventListener("click", sendText);
+    </script>
+  </body>
+</html>

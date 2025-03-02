@@ -1,0 +1,13 @@
+{
+    "python.pythonPath": "venv/bin/python", // Path to your virtual environment Python
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.testing.pytestEnabled": true, // Use pytest for testing
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.git": true,
+        "**/venv": true
+    },
+    "editor.formatOnSave": true,
+    "liveServer.settings.port": 5500 // Port for Live Server
+}
